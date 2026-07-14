@@ -1,0 +1,9 @@
+{
+  "name": "louis-on",
+  "version": "0.1.0",
+  "description": "Claude Code skills that audit your premises, declare their sources, and break retry loops.",
+  "author": {
+    "name": "louisonrib",
+    "url": "https://github.com/louisonrib"
+  }
+}
