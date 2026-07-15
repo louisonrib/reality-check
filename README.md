@@ -1,3 +1,5 @@
+For people who move with AI faster than they can double-check it — catch the wrong turn before you build on it, and climb out of the loop when you're already stuck.
+
 Claude Code skills that audit your premises, declare their sources, and break retry loops.
 
 ## Installation
