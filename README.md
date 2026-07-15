@@ -7,14 +7,14 @@ Claude Code skills that audit your premises, declare their sources, and break re
 ### Plugin marketplace
 
 ```
-/plugin marketplace add louisonrib/louis-on
-/plugin install louis-on@louis-on
+/plugin marketplace add louisonrib/lucid
+/plugin install lucid@lucid
 ```
 
 ### npx skills
 
 ```
-npx skills add louisonrib/louis-on
+npx skills add louisonrib/lucid
 ```
 
 ## Skills
