@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "lucid",
-  "description": "Claude Code skills that audit premises, declare sources, and break retry loops.",
+  "description": "Claude Code skills that audit premises, declare sources, break retry loops, and keep documents written for their reader.",
   "owner": {
     "name": "louisonrib",
     "url": "https://github.com/louisonrib"
@@ -10,7 +10,7 @@
     {
       "name": "lucid",
       "source": "./",
-      "description": "Premise audits, source provenance, retry-loop breaking."
+      "description": "Premise audits, source provenance, retry-loop breaking, reader-first writing."
     }
   ]
 }

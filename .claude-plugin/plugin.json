@@ -1,7 +1,7 @@
 {
   "name": "lucid",
-  "version": "0.1.0",
-  "description": "Claude Code skills that audit your premises, declare their sources, and break retry loops.",
+  "version": "0.2.0",
+  "description": "Claude Code skills that audit your premises, declare their sources, break retry loops, and keep your documents written for their reader.",
   "author": {
     "name": "louisonrib",
     "url": "https://github.com/louisonrib"
