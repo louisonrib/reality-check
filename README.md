@@ -7,14 +7,14 @@ Claude Code skills that audit your premises, declare their sources, break retry 
 ### Plugin marketplace
 
 ```
-/plugin marketplace add louisonrib/lucid
-/plugin install lucid@lucid
+/plugin marketplace add louisonrib/reality-check
+/plugin install reality-check@reality-check
 ```
 
 ### npx skills
 
 ```
-npx skills add louisonrib/lucid
+npx skills add louisonrib/reality-check
 ```
 
 ## Skills

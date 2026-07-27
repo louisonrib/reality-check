@@ -1,5 +1,5 @@
 {
-  "name": "lucid",
+  "name": "reality-check",
   "version": "0.2.0",
   "description": "Claude Code skills that audit your premises, declare their sources, break retry loops, and keep your documents written for their reader.",
   "author": {
