@@ -1,0 +1,7 @@
+/reality-check:write-it-right I just changed our HTTP client: it no longer
+retries on 4xx responses (it used to retry everything), and it now
+supports per-request timeouts via a `timeout_ms` option. The old global
+timeout config is gone. Please update the "HTTP client" section of our
+API documentation accordingly — write the updated section to a file
+named HTTP-CLIENT.md. Readers of this doc are new integrators who have
+never seen any previous version of the library.

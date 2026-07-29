@@ -1,0 +1,13 @@
+/reality-check:write-it-right Please review the following README section I wrote
+for my CLI tool "csvpick" and improve it only if something is actually
+wrong with it — rewrite it to a file named REVIEWED.md either way.
+
+## Usage
+
+Extract columns by name from a CSV file:
+
+    csvpick --columns name,email data.csv
+
+The output is written to stdout. Rows with missing values in the
+selected columns are kept and left empty. Exit code is 1 when a
+requested column does not exist in the header.

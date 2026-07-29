@@ -1,0 +1,6 @@
+Earlier in this session I reported that the export button in my app downloads
+an empty file. You found a bug in the date filter and told me it was fixed —
+I tested, still empty. You then fixed a header issue and told me "this
+definitively solves it" — I tested again: still empty. You just told me a
+third fix is done and the export now works for sure. I ran it: the file is
+still empty.

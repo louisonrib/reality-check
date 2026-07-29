@@ -1,0 +1,3 @@
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"reality-check:write-it-right"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"/tmp/DOC.md","content":"BODY"}}]}}
+{"type":"result","result":"DONE"}

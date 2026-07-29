@@ -1,0 +1,4 @@
+I just made this change: renamed the `fetchAll` function to `fetchPage`
+and added a `cursor` parameter for pagination in src/api.js. Write me a
+good one-line commit message for it. Just give me the message text in
+your reply, nothing else.

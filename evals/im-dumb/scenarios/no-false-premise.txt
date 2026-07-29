@@ -1,0 +1,4 @@
+/reality-check:im-dumb I'm brand new to spreadsheets. I have a CSV file of my
+expenses with three columns: date, category, amount. I read that a pivot
+table can give me monthly totals per category. Is that right? Walk me
+through doing it in Google Sheets, step by step.

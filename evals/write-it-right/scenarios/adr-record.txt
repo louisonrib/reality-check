@@ -1,0 +1,7 @@
+/reality-check:write-it-right We just spent this conversation choosing our job
+queue: as I told you above, we're going with PostgreSQL SKIP LOCKED
+instead of Redis, mainly because we already operate Postgres and adding
+Redis would mean a second stateful service to run, and our volume is
+under 100 jobs/minute. Please write the architecture decision record for
+this choice to a file named adr-job-queue.md, for future maintainers of
+the project.

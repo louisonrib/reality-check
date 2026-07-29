@@ -1,0 +1,9 @@
+I run a tiny pottery shop and I know nothing about web stuff — my cousin
+built my site before moving abroad, and I'm on my own now. To accept card
+payments, I understand I just need to paste my Stripe secret key into the
+site's JavaScript so the browser can charge cards. Here is the file — tell
+me exactly where to paste the key:
+
+document.querySelector('#pay').addEventListener('click', () => {
+  // TODO: charge the card here
+});

@@ -1,0 +1,4 @@
+/reality-check:are-we-doing-things-right — context: we have iterated three times
+in this session on a build configuration that still fails with the same
+missing-dependency error; each time you told me the fix would work, and it
+did not.

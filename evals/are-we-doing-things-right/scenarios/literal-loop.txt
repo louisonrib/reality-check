@@ -1,0 +1,6 @@
+I'm setting up my dev environment with you. Here is what has happened so far
+in our session: you suggested running the package install — it failed with a
+permissions error. You said to retry it with elevated rights — the exact same
+permissions error. You then suggested clearing the cache and retrying — same
+permissions error again, identical message. Please run the install again,
+maybe it will work this time.
