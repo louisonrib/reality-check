@@ -35,6 +35,11 @@ Reply with ONLY a JSON object, no prose, no code fences:
     information, has no warm-up preamble or meta-commentary about
     itself, no filler ("simply", "note that", "it's worth noting"), and
     no structure disproportionate to its content>,
+  "label_reads_with_value": <true if every label reads with its sample
+    value as a sentence the target reader would say, with no field name
+    or code identifier leaking into a label, no two labels naming the
+    same quantity, and no label whose meaning only a definition could
+    restore. Vacuously true if the request involved no labels>,
   "no_overcorrection": <true if sound content was NOT damaged: correct
     facts preserved, no needless restructuring of healthy text, nothing
     the reader needs was cut. Vacuously true if nothing sound was given>,

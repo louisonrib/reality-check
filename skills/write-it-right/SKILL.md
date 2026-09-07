@@ -1,20 +1,23 @@
 ---
 name: write-it-right
 description: >
-  Use when about to write or substantially edit a persistent prose file
-  whose reader is not in the current conversation — documentation, a
-  README, an agent prompt or skill, a decision record — and when the user
-  asks for a pass on a file that reads wrong. Not for commit messages,
-  code comments, chat replies, or throwaway notes.
+  Use when about to write or substantially edit any text whose reader is
+  not in the current conversation — documentation, a README, an agent
+  prompt or skill, a decision record, and what a rendered page shows:
+  titles, column headers, tile captions, legends, control labels in a
+  template — and when the user asks for a pass on a file that reads
+  wrong. Not for commit messages, code comments, chat replies, or
+  throwaway notes.
 ---
 
 # Write It Right
 
 You are about to write something whose reader is not here. Everything you
 know right now — this conversation, the change you just made, the
-decisions settled along the way — is exactly what the reader does not
-share. Fresh context leaks into documents by default; your job is to keep
-the document the reader's, not yours.
+decisions settled along the way, the names of the fields you just
+computed — is exactly what the reader does not share. Fresh context leaks
+into documents by default; your job is to keep the document the reader's,
+not yours.
 
 ## Before writing: name the reader and the job
 
@@ -23,9 +26,39 @@ Then the document's single job: teach, get a task done, describe what is,
 or record a decision. A sentence that serves another job belongs
 elsewhere — link to where it lives, or leave it out. Never embed it.
 
+## The unit of the tests: the reader's atom
+
+You write in units of production — a field, a line of a template, a
+sentence you typed, a file. The reader reads in units of perception —
+what they take in at once. The two coincide only in prose, where the
+atom is the sentence on both sides. Everywhere else, run the tests on
+the reader's atom, never on yours:
+
+| you wrote | the reader takes in |
+|---|---|
+| a sentence | the sentence |
+| a label, a header, a tile caption | the label **with the value under it** |
+| a control's text | the text **with what the click does** |
+| a derived value | the value **with the variable it is derived on** |
+| a term and its glossary entry | the term **with its definition** |
+| a chart's axes | the chart **with the question it answers** |
+
+The test is to say the atom aloud as the reader would: "58 reports of
+aberrant settings". If the sentence needs a word the atom does not
+carry, the reader will supply it — from their question, not from your
+data. Use the most extreme value already at hand, not the typical one.
+
+Two signs the atom is yours, not the reader's: the glossary entry has to
+**rename** the term to define it ("the number of days…" under a label
+that says *time*); or one quantity carries **two names** on one page —
+two of your units leaked as two things. Your words come from a field
+name, the axes of the data, symmetry with the neighbouring label, the
+quoted example of a spec: none is false, none is the reader's word until
+the atom has been read.
+
 ## The three tests
 
-Run every sentence — written or about to be written — through all three.
+Run every atom — written or about to be written — through all three.
 
 ### 1. The reader test — no conversation residue
 
