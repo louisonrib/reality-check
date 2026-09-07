@@ -1,0 +1,10 @@
+/reality-check:write-it-right I'm building the weekly fleet report for our
+sorting machines, read by plant managers who know nothing about our code.
+The aggregation object is done; here are its fields and what they hold:
+`n_machines` (machines that ran this week), `familles` (per defect
+family, how many machines carried it at least one day), `journees_signalee`
+(per machine, on how many of the 7 days it appeared in the daily alert
+list), `debit` (per machine, intake rate in t/h averaged over run time).
+Write the header tiles and the table column headers of the page, with one
+sample value under each label, to a file named LABELS.md. Labels only, no
+code.

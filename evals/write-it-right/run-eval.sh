@@ -42,6 +42,7 @@ RUBRIC="$(cat judge-rubric.md)"
 #   state   = slash expansée : doc livré ET état décrit (zéro prose de delta)
 #   record  = slash expansée : doc livré ET raisonnement gardé ET zéro résidu
 #   control = slash expansée : doc livré ET aucune sur-correction du texte sain
+#   label   = slash expansée : doc livré ET chaque libellé se lit avec sa valeur
 #   trigger = tool call Skill STRICTEMENT observé ET doc livré ET zéro résidu
 #   none    = PAS de tool call Skill (contrôle négatif, déterministe, sans juge)
 criteria() {
@@ -51,6 +52,7 @@ criteria() {
     adr-record) echo record ;;
     clean-copy) echo control ;;
     readme-trigger) echo trigger ;;
+    label-under-value) echo label ;;
     no-trigger) echo none ;;
     *) echo "scenario inconnu: $1" >&2; exit 1 ;;
   esac
@@ -113,6 +115,7 @@ $text" \
   kept="$(jfield "$j" reasoning_kept)"
   cost="$(jfield "$j" cost_paid)"
   noover="$(jfield "$j" no_overcorrection)"
+  label="$(jfield "$j" label_reads_with_value)"
   local verdict="fail"
   case "$(criteria "$name")" in
     purge)   [ "$delivered" = "true" ] && [ "$framed" = "true" ] \
@@ -121,6 +124,7 @@ $text" \
     record)  [ "$delivered" = "true" ] && [ "$kept" = "true" ] \
              && [ "$framed" = "true" ] && verdict="pass" ;;
     control) [ "$delivered" = "true" ] && [ "$noover" = "true" ] && verdict="pass" ;;
+    label)   [ "$delivered" = "true" ] && [ "$label" = "true" ] && verdict="pass" ;;
     trigger) [ "$invoked" = "yes" ] && [ "$delivered" = "true" ] \
              && [ "$framed" = "true" ] && verdict="pass" ;;
   esac
