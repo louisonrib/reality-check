@@ -3,9 +3,10 @@ name: write-it-right
 description: >
   Use when about to write or substantially edit any text whose reader is
   not in the current conversation — documentation, a README, an agent
-  prompt or skill, a decision record, and what a rendered page shows:
-  titles, column headers, tile captions, legends, control labels in a
-  template — and when the user asks for a pass on a file that reads
+  prompt or skill, a decision record, and the visible text of a
+  deliverable: a mockup, a page template (titles, column headers, tile
+  captions, legends, control labels), interface copy, a generated message
+  or ticket — and when the user asks for a pass on a text that reads
   wrong. Not for commit messages, code comments, chat replies, or
   throwaway notes.
 ---
@@ -25,6 +26,17 @@ One sentence, to yourself: who reads this file, knowing what, to do what?
 Then the document's single job: teach, get a task done, describe what is,
 or record a decision. A sentence that serves another job belongs
 elsewhere — link to where it lives, or leave it out. Never embed it.
+
+## Before writing: ship each visible element bare
+
+A visible element (a value, a chart, a field) ships **bare**: its label,
+its value with its unit, and the reference it is judged against, such as
+a threshold. That is the default, and the deliverable holds only that.
+
+Any other sentence beside the element (a legend, how the value was
+computed, why it is shown, how to read it) is an option: propose it apart,
+in the conversation, with the reader's question it answers. The requester
+adds what they want, rather than cutting what they don't.
 
 ## The unit of the tests: the reader's atom
 
