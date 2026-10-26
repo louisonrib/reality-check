@@ -35,6 +35,12 @@ IMPORT = re.compile(r"(?:^|(?<=\s))@([^\s`]+)")
 ISSUE = re.compile(r"(?<![\w&/#])#\d{1,6}\b|/(?:pull|issues)/\d+")
 DATE = re.compile(r"(?<!\d)20\d\d-[01]\d-[0-3]\d(?!\d)")
 FENCE = re.compile(r"^\s*(```|~~~)")
+# Numbered decision records (`0024-keep-backups.md`, `adr-24.md`) and their citations ("ADR-0024", "ADR 24").
+NUMBERED = re.compile(r"(?i)^(adr[-_ ]?)?0*(\d{1,5})(?=[-_ .])")
+DECISION_FOLDER = re.compile(r"(?i)(?:^|[-_ ])(?:adrs?|decisions?)(?:[-_ ]|$)")
+# A citation can list more numbers of the same width: "ADR-0021/0022", "ADR-0041 et 0048".
+CITATION = re.compile(r"(?i)(?<![\w/-])ADR[-_ ]?(\d{1,5})"
+                      r"((?:\s*(?:/|,|&|\bet\b|\band\b)\s*\d{1,5}(?!\d|\.\d))*)(?!\d|\.\d)")
 
 
 def git(repo, *args):
@@ -233,6 +239,54 @@ def imports_in(text):
             token = m.group(1).rstrip(".,;:)")
             if token:
                 yield n, token
+
+
+def decision_records(docs):
+    """Number -> path of each numbered decision record: a numbered doc file in a folder named for
+    decisions (`adr`, `decisions`, `architecture-decisions`) or below one, or named `adr-<n>-…`.
+    A number two records share maps to None: citing it names no one file."""
+    out = {}
+    for path in docs:
+        folder, name = posixpath.split(path)
+        m = NUMBERED.match(name)
+        if m and (m.group(1) or any(DECISION_FOLDER.search(d) for d in folder.split("/"))):
+            n = int(m.group(2))
+            out[n] = None if n in out else path
+    return out
+
+
+def cited(line, records):
+    """The decision records a line cites by number."""
+    for m in CITATION.finditer(line):
+        for number in [m.group(1)] + [d for d in re.findall(r"\d+", m.group(2)) if len(d) == len(m.group(1))]:
+            if records.get(int(number)):
+                yield records[int(number)]
+
+
+def citations(path, text, records, named):
+    """Pointers from path to the decision records its text cites by number, except on a line
+    whose link or backticked path already names that record (`named`, from scan_refs)."""
+    seen = {(to, n) for n, to, _ in named}
+    return {(path, to, "citation", n) for n, line in prose_lines(text) for to in cited(line, records)
+            if to != path and (to, n) not in seen}
+
+
+def code_citations(tree, records):
+    """{from, line, to} for each line of a tracked file that is no doc file (code, config) and
+    cites a decision record by number, read at the tree's commit or in the working tree."""
+    if not records:
+        return []
+    argv = ["git", "-C", tree.repo, "grep", "-n", "-I", "--null", "-i", "-E", "ADR[-_ ]?[0-9]"]
+    out = subprocess.run(argv + ([tree.ref] if tree.ref else []), capture_output=True, encoding="utf-8",
+                         errors="replace").stdout
+    hits = set()
+    for record in out.splitlines():
+        path, n, text = record.split("\0", 2)  # --null with -n: path NUL line NUL text
+        if tree.ref:
+            path = path[len(tree.ref) + 1:]  # `<ref>:<path>`
+        if path in tree.files and not is_doc(path):
+            hits |= {(path, int(n), to) for to in cited(text, records)}
+    return [{"from": f, "line": n, "to": t} for f, n, t in sorted(hits)]
 
 
 def scan_refs(text, resolver, top_level_exists, imports):
@@ -523,6 +577,44 @@ TS = re.compile(r'"timestamp":\s*"([^"]+)"')
 CWD = re.compile(r'"cwd":\s*"([^"]+)"')
 WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 MARKERS = ('"instructions"', '"nested_memory"', '"tool_use"', "<command-name>")
+# A doc path written in a tool's input: absolute, under `~/` or `$HOME/`, or relative; an `@` import's `@` is no part of it.
+NAMED_DOC = re.compile(r"(?<![\w./~$-])((?:~/|\$HOME/|/)?(?!@)(?:[\w@+.-]+/)*[\w@+-][\w@+.-]*\.(?:md|mdx|mdc|rst|adoc))"
+                       r"(?![\w/-])")
+# A doc path with spaces, quoted whole or with each space escaped (`a\ b.md`).
+SPACED_DOC = re.compile(r"([\"'])([^\"'\n]*\s[^\"'\n]*\.(?:md|mdx|mdc|rst|adoc))\1"
+                        r"|((?:[^\s\"'\\;&|()]|\\ )*\\ (?:[^\s\"'\\;&|()]|\\ )*\.(?:md|mdx|mdc|rst|adoc))(?![\w/-])")
+CD = re.compile(r"(?<![\w-])cd\s+(?:\"([^\"\n]+)\"|'([^'\n]+)'|((?:[^\s;&|()\"'\\]|\\ )+))")
+PATH_FIELDS = ("file_path", "notebook_path", "path")
+
+
+def subshells(command):
+    """(position, "open" or "close", None) for each parenthesis of a shell command outside quotes: a
+    `cd` inside `( … )` or `$( … )` ends with it."""
+    out, quote, escaped = [], None, False
+    for i, c in enumerate(command):
+        if escaped:
+            escaped = False
+        elif c == "\\" and quote != "'":
+            escaped = True
+        elif quote:
+            quote = None if c == quote else quote
+        elif c in "\"'":
+            quote = c
+        elif c in "()":
+            out.append((i, "open" if c == "(" else "close", None))
+    return out
+
+
+def strings(value):
+    """Every string in a JSON value, at any depth."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from strings(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from strings(v)
 
 
 class Transcripts:
@@ -534,6 +626,7 @@ class Transcripts:
         self.memory_dir = auto_memory_dir(history_of, home)
         self.dirs, self.session_dates = set(), {}
         self.loaded, self.read, self.wrote = {}, {}, {}  # key -> {session: last date}
+        self.read_by = {}  # key -> {tool name: {session}}
         self.loaded_first = {}  # key -> {session: first date}
         self.first_write = {}  # key -> (timestamp, session)
         self.skills = []  # (session, name, date, made by a subagent)
@@ -561,6 +654,40 @@ class Transcripts:
         if m:
             return ("repo", m.group(1))
         return ("abs", path)
+
+    def paths_named(self, inp, cwd):
+        """Keys of the files a tool's input names: its path fields whole, and every doc path in
+        its text. A relative path resolves against the folder of the last `cd` before it in the
+        shell command (`cd <memory dir> && cat feedback.md`) and not closed by a subshell, else
+        against the session's folder."""
+        def absolute(p, base):
+            if p == "~" or p.startswith("~/"):
+                return self.home + p[1:]
+            if p.startswith("$HOME/"):
+                return self.home + p[5:]
+            return os.path.join(base, p) if base else (p if p.startswith("/") else None)
+
+        paths = {absolute(inp[k], cwd) for k in PATH_FIELDS if isinstance(inp.get(k), str) and inp[k]}
+        command = inp.get("command")
+        for text in strings(inp):
+            base = cwd
+            hits = [(m.start(), "doc", m.group(1)) for m in NAMED_DOC.finditer(text)]
+            hits += [(m.start(), "doc", m.group(2) or m.group(3).replace("\\ ", " "))
+                     for m in SPACED_DOC.finditer(text)]
+            if text == command:  # a `cd` in a brief is prose
+                hits += [(m.start(), "cd", next(g for g in m.groups() if g).replace("\\ ", " "))
+                         for m in CD.finditer(text)] + subshells(text)
+            outer = []  # the folder each open subshell started in
+            for _, kind, p in sorted(hits):
+                if kind == "open":
+                    outer.append(base)
+                elif kind == "close":
+                    base = outer.pop() if outer else base
+                elif kind == "cd":
+                    base = absolute(p, base)
+                else:
+                    paths.add(absolute(p, base))
+        return {self.key(p) for p in paths if p}
 
     def _read_file(self, path, dirname):
         stem = os.path.splitext(os.path.basename(path))[0]
@@ -631,16 +758,18 @@ class Transcripts:
                 name = b.get("name")
                 if name == "Skill" and inp.get("skill"):
                     self.skills.append((sid, inp["skill"].lstrip("/"), date, subagent))
-                path = inp.get("file_path") or inp.get("notebook_path")
-                if not path:
-                    continue
-                key = self.key(path)
-                if name == "Read":
-                    self._mark(self.read, key, sid, date)
-                elif name in WRITE_TOOLS:
+                if name in WRITE_TOOLS:  # the text it writes names files it does not read
+                    path = inp.get("file_path") or inp.get("notebook_path")
+                    if not path:
+                        continue
+                    key = self.key(path)
                     self._mark(self.wrote, key, sid, date)
                     if name == "Write" and (key not in self.first_write or ts < self.first_write[key][0]):
                         self.first_write[key] = (ts, sid)
+                    continue
+                for key in self.paths_named(inp, e.get("cwd")):
+                    self._mark(self.read, key, sid, date)
+                    self.read_by.setdefault(key, {}).setdefault(name, set()).add(sid)
 
     def loaded_in_sessions(self, key):
         sessions = self.loaded.get(key)
@@ -652,7 +781,8 @@ class Transcripts:
     def sessions(self, key):
         r, w = self.read.get(key, {}), self.wrote.get(key, {})
         return {"read": len(r), "wrote": len(w), "last_read": max(r.values()) if r else None,
-                "last_wrote": max(w.values()) if w else None}
+                "last_wrote": max(w.values()) if w else None,
+                "read_by": {tool: len(s) for tool, s in self.read_by.get(key, {}).items()}}
 
     def created_in_session(self, key, git_created):
         if key not in self.first_write:
@@ -1035,6 +1165,7 @@ def analyse(tree, ctx, with_history):
             histories = list(pool.map(lambda p: history(repo, p), tree.docs))
     files, pointers, texts = [], set(), {}
     agents_condition_met = not claude_md_above(ctx.history_of, tree)
+    records = decision_records(tree.docs)
 
     for path, (hist, commit_dates) in zip(tree.docs, histories):
         text = tree.read(path)
@@ -1045,6 +1176,7 @@ def analyse(tree, ctx, with_history):
             named, unresolved = scan_refs(text, lambda t, p=path: resolve(t, p, tree), tree.exists,
                                           expands_imports(path))
             pointers |= {(path, to, kind, n) for n, to, kind in named if to != path and to in tree.docs}
+            pointers |= citations(path, text, records, named)
             for pattern in frontmatter_patterns(text):
                 rx = glob_regex(pattern)
                 pointers |= {(path, d, "rule_paths", 0) for d in tree.docs if rx.match(d) and d != path}
@@ -1072,6 +1204,7 @@ def analyse(tree, ctx, with_history):
 
         named, unresolved = scan_refs(text, resolver, tree.exists, False)
         pointers |= {(path, to, kind, n) for n, to, kind in named if to != path}
+        pointers |= citations(path, text, records, named)
         key = ("abs", abspath)
         harness = [rule("claude-code", "session_start",
                         "The auto-memory index: its first 200 lines or 25KB load when a session starts.",
@@ -1103,6 +1236,10 @@ def analyse(tree, ctx, with_history):
     for f, t, kind, _ in pointers:
         if kind != "rule_paths":
             inbound.setdefault(t, set()).add(f)
+    from_code = code_citations(tree, records)
+    citing = {}  # record -> the code files that cite it
+    for c in from_code:
+        citing.setdefault(c["to"], set()).add(c["from"])
     for f in files:
         if f["scope"] == "user":
             continue
@@ -1112,11 +1249,12 @@ def analyse(tree, ctx, with_history):
         f["cursor_conversations"] = None if ctx.cursor is None else sum(
             1 for text in ctx.cursor.values() if mentions(text, f["path"]))
         f["pointed_to_by"] = len(inbound.get(f["path"], ()))
+        f["cited_by_code"] = len(citing.get(f["path"], ())) if f["scope"] == "repo" else 0
         readers = [e for e in f["named_by_tools"] if e["via"] != "former_path"]
-        f["orphan"] = not (f["harness"] or readers or f["pointed_to_by"]
+        f["orphan"] = not (f["harness"] or readers or f["pointed_to_by"] or f["cited_by_code"]
                            or f["loaded_in_sessions"] or f["sessions"]["read"] or f["cursor_conversations"])
     return {"files": sorted(files, key=lambda f: (f["scope"], f["path"])), "pointers": pointers,
-            "texts": texts, "named": named, "folders": folders}
+            "texts": texts, "named": named, "folders": folders, "code_citations": from_code}
 
 
 def inventory(repo, history_of):
@@ -1153,6 +1291,7 @@ def inventory(repo, history_of):
         "pointers": [{"from": f, "to": t, "kind": k, "line": n} for f, t, k, n in sorted(state["pointers"])],
         "duplicates": duplicates(state["texts"]),
         "memory_refs": memory_refs(repo, ctx.memory, home),
+        "code_citations": state["code_citations"],
         "global_refs": global_refs(repo, tree, state["texts"], ctx.user_files, home),
         "tools": tools_out,
         "doc_writers": doc_writers(ctx, tree, invoked),

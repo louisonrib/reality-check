@@ -1,19 +1,21 @@
 # Stage 5: placement and pruning in the files that stay
 
-Two kinds of file, judged differently: the always-loaded files passage by passage, and the other docs that stay section by section, each by the criteria of its type.
+Two kinds of file, judged differently: the always-loaded files section by section, then passage by passage, and the other docs that stay section by section, each by the criteria of its type.
 
 ## Always-loaded files
 
-These are the files that enter every session: those with a `harness` rule whose `when` is `session_start` (and whose `condition_met` is not `false`), and everything they `@`-import (`pointers` of kind `import`). In Claude Code that is `CLAUDE.md` at the root and above it, `AGENTS.md` when no `CLAUDE.md` is loaded, unscoped `.claude/rules/*.md` and the `MEMORY.md` index. Each costs context in every session, so each passage has to earn its place.
+These are the files that enter every session: those with a `harness` rule whose `when` is `session_start` (and whose `condition_met` is not `false`), and everything they `@`-import (`pointers` of kind `import`). In Claude Code that is `CLAUDE.md` at the root and above it, `AGENTS.md` when no `CLAUDE.md` is loaded, unscoped `.claude/rules/*.md` and the `MEMORY.md` index. Each costs context in every session. All Anthropic sources are [vendor].
 
-A passage is the smallest piece that says one thing: a bullet, a table row, a short paragraph. Give each one a verdict from this grid. All Anthropic sources are [vendor].
+**Sections first.** Ask of each section, under its heading: must it load in every session? [Anthropic memory page][memory]: "Move instructions that matter for only part of the codebase into path-scoped rules, which load only when Claude works with matching files."; "Use path-scoped rules to load instructions only when Claude works with matching files, or trim content that isn't needed in every session." A section the agent needs only when it works on certain files moves whole to a rule scoped with `paths:` on those files. Writing a doc is working on a file: "A path-scoped rule loads when Claude uses the Read, Write, or Edit tool on a matching file" (same page). A section on where each kind of doc lives and how to write it is needed when the agent writes a `.md`; scoped to the doc paths, it stays out of the sessions that change only code. Ask it of every section, including one whose passages would each stay by the grid below: a passage judged alone can earn its place while its section loads in sessions that never use it.
+
+**Then the passages** of the sections that stay. A passage is the smallest piece that says one thing: a bullet, a table row, a short paragraph. Give each one a verdict from this grid.
 
 | The passage holds | Verdict | Source |
 |---|---|---|
 | A command the agent cannot guess; a style rule that differs from defaults; a gotcha that is not self-evident; an architectural decision specific to the project | Stays | [Anthropic best practices][bp], "Include" list: "Bash commands Claude can't guess", "Code style rules that differ from defaults", "Common gotchas or behaviors that aren't self-evident", "Architectural decisions specific to your project" |
 | A "never do X" rule | Stays | [Anthropic features overview][features]: "Put it in CLAUDE.md if Claude should always know it: … "never do X" rules." |
 | Something the agent can read in the code: dependency list, directory layout, file-by-file description | Deleted | [Anthropic best practices][bp] excludes "Anything Claude can figure out by reading code"; `/doctor` "cuts content Claude can derive from the codebase, such as directory layouts, dependency lists, and architecture overviews" ([memory page][memory]) |
-| A multi-step procedure, or a convention for one area of the code | Moves to a skill, or to a nested instruction file or a rule scoped with `paths:` | [Anthropic memory page][memory]: "If an entry is a multi-step procedure or only matters for one part of the codebase, move it to a skill or a path-scoped rule instead." |
+| A multi-step procedure, or a convention for one area of the repo, code or docs | Moves to a skill, or to a nested instruction file or a rule scoped with `paths:` | [Anthropic memory page][memory]: "If an entry is a multi-step procedure or only matters for one part of the codebase, move it to a skill or a path-scoped rule instead." |
 | Something that must happen every time | Moves to a hook or a permission | [Anthropic best practices][bp]: "Unlike CLAUDE.md instructions which are advisory, hooks are deterministic and guarantee the action happens." |
 | A style rule a tool can check | Moves to the linter or CI | [Cursor rules][cursor] [vendor]: "Copying entire style guides: Use a linter instead."; [dos Santos et al.][smells] [measured]: "Lint Leakage" in 62 of 100 popular repos' files |
 | A note for the humans who maintain the file | Moves to an HTML comment | [Anthropic memory page][memory]: HTML comments "are stripped before the content is injected into Claude's context" |
@@ -30,7 +32,7 @@ Four kinds have no settled answer; present the sides and let the user decide:
 
 **Length.** Judge content, not size. No study measured a line or word threshold; the vendors' numbers (200, 500, 1,000 lines, 32 KiB) come with no stated basis.
 
-**Pruning.** Prune passage by passage. [Chakrabarti][chakrabarti] [measured, single-author preprint]: a wholesale rewrite resets a file's size but not its growth rate (4.1 % per commit before the first rewrite, 4.9 % after).
+**Pruning.** Prune in place: move sections, cut passages. [Chakrabarti][chakrabarti] [measured, single-author preprint]: a wholesale rewrite resets a file's size but not its growth rate (4.1 % per commit before the first rewrite, 4.9 % after).
 
 ## Living docs and dated records
 
@@ -44,9 +46,29 @@ Judge each doc that stays by its type, section by section:
 | Decision record | Superseded, never deleted ([Nygard][nygard] [practitioner]). Whether an accepted one may be edited is contested: [Fowler][fowler] [practitioner] says it "should never be reopened or changed"; other templates carry a "last updated" field |
 | Plan, design doc | [Google docguide][docguide] [vendor]: "once the code is implemented, design docs should serve as archives of these decisions, not as half-correct docs" |
 | README | [GitHub][readme] [vendor]: "A README should only contain information necessary for developers to get started using and contributing to your project." |
-| Auto memory | Judged once the user has answered on the mechanism itself (stage 4). [Anthropic memory page][memory] [vendor]: "Claude skips anything it can derive from the codebase … It also skips anything your CLAUDE.md files already say."; `MEMORY.md` is an index, one line per entry |
+| Auto memory | Entry by entry, once the user has answered on the mechanism itself (stage 4): [Auto-memory entries](#auto-memory-entries). `MEMORY.md` is an index, one line per entry |
 
 **Restated code.** A passage that restates the code (identifiers, constants, counts, file lists, what a module does or does not do) gets a pointer to the code or is removed, whether or not it is still true. No owner states this as a general rule; they state cases: [matklad][matklad] on links, [Ubl][ubl] [practitioner] on copied interfaces and schemas, which "quickly get out of date". [Tan, Wagner, Treude][docer] [measured]: outdated code references in READMEs and wikis stayed wrong for years. Check each restatement against the code, with a search or the compiler rather than by eye, and report the false ones as such, quoting in the verdict the file:line, or the command and what it printed, that settles each one: that quote is what makes it *checked in the code*. Paths and links that no longer resolve (`unresolved_refs`) are *checked by a script*: check each one before proposing its removal, since a path can name a file the change is about to create or one outside the repo.
+
+## Auto-memory entries
+
+No source gives a rule for sorting an agent's memory entries into a project's docs: no harness vendor, study or practitioner. The steps below combine what the vendors say about memory with the grid of the always-loaded files. Say so in the report. The user approves each entry that moves.
+
+Each entry goes through these steps, in order:
+
+1. **Still true?** Check every file, function, flag, command and identifier the entry names against today's code, with a search or the compiler, and quote what settles it. An entry the code contradicts is cut. The vendors that ship memory treat an entry as a claim about the past:
+   - Claude Code, the memory prompt shipped in version 2.1.310 (no doc page) [vendor]: "A memory that names a specific function, file, or flag is a claim that it existed *when the memory was written*."
+   - [GitHub Copilot Memory][gh-memory] [vendor]: it "checks those citations against the current branch to confirm the information is still accurate"; "Only validated facts are used."
+   - [OpenAI Codex][codex], consolidation prompt `consolidation_v2.md` [vendor]: "later corrections supersede earlier claims."
+2. **Already written elsewhere, or derivable from the code?** Cut. [Anthropic memory page][memory] [vendor]: "Claude skips anything it can derive from the codebase … It also skips anything your CLAUDE.md files already say."
+3. **The rest** goes through the grid of the always-loaded files, like any passage.
+4. **A personal preference that does not hold for the project** stays out of the repo. Show it to the user, who decides where it goes.
+
+The entry's age, how often its mistake recurred and whether the user corrected it are not sorting criteria:
+
+- **Age.** No source uses the time since an entry was written to decide where it goes, and a date on disk can be a later rewrite: Claude Code "records the write time in a `modified` frontmatter field" ([memory page][memory]).
+- **Recurrence.** Vendors use it to admit a line when a mistake happens. An entry that works prevents the mistake it records, so it leaves less trace of recurrence than one that does not.
+- **A correction by the user** shows that the lesson came from the user. It does not say where the lesson belongs.
 
 ## Repetition
 
@@ -78,3 +100,5 @@ A passage the project repeats from the user's global files is a fact for the rep
 [sre]: https://sre.google/workbook/on-call/
 [readme]: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes
 [ubl]: https://www.industrialempathy.com/posts/design-docs-at-google/
+[gh-memory]: https://docs.github.com/en/copilot/concepts/agents/copilot-memory
+[codex]: https://github.com/openai/codex/blob/970111f6cb62cc02fe36a82ea7d71b37a2889c97/codex-rs/memories/write/templates/memories/consolidation_v2.md

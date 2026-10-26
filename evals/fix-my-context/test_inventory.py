@@ -136,9 +136,10 @@ class InventoryOnFixture(unittest.TestCase):
 
     def test_sessions_that_read_or_wrote_a_file_are_counted(self):
         self.assertEqual(self.repo_file("GLOSSARY.md")["sessions"],
-                         {"read": 1, "wrote": 1, "last_read": "2026-09-10", "last_wrote": "2026-09-01"})
+                         {"read": 1, "wrote": 1, "last_read": "2026-09-10", "last_wrote": "2026-09-01",
+                          "read_by": {"Read": 1}})
         self.assertEqual(self.repo_file("docs/ARCHITECTURE.md")["sessions"],
-                         {"read": 0, "wrote": 1, "last_read": None, "last_wrote": "2026-09-10"})
+                         {"read": 0, "wrote": 1, "last_read": None, "last_wrote": "2026-09-10", "read_by": {}})
 
     def test_the_session_that_created_a_file_and_its_skills(self):
         self.assertEqual(self.repo_file("GLOSSARY.md")["created_in_session"],
@@ -311,6 +312,157 @@ class FilesThatPointToAFile(unittest.TestCase):
         self.assertEqual(files["CONTRIBUTING.md"]["pointed_to_by"], 2)
         # A rule's paths: match is a loading condition, not a pointer someone follows.
         self.assertEqual(files["docs/notes/old-ideas.md"]["pointed_to_by"], 0)
+
+
+class ReadsByAnyTool(unittest.TestCase):
+    """A session reads a file when any tool's input names its path, not only the Read tool:
+    a shell command, a search, a brief handed to a subagent. Each tool is counted apart."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.repo = fixture_repo.build(os.path.join(cls.tmp.name, "app"), os.path.join(cls.tmp.name, "home"))
+        cls.home = os.path.realpath(os.path.join(cls.tmp.name, "home"))
+        main = os.path.join(cls.home, ".claude/projects", fixture_repo.slug(cls.repo))
+        memory = "~/.claude/projects/" + fixture_repo.slug(cls.repo) + "/memory"
+        fixture_repo._write(cls.repo, "docs/meeting notes.md", "# Notes\n")
+        fixture_repo._write(cls.repo, "docs/old plans.md", "# Plans\n")
+        fixture_repo._write(cls.repo, "docs/team days/agenda.md", "# Agenda\n")
+        fixture_repo._commit(cls.repo, "2026-09-19T10:00:00+00:00", "Add docs with spaces in their paths")
+        use = fixture_repo._tool_use
+        fixture_repo._jsonl(os.path.join(main, "s4.jsonl"), [
+            use("s4", cls.repo, "2026-09-20T10:00:00Z", "Bash",
+                {"command": f"cd {memory} && cat feedback_backups.md"}),
+            use("s4", cls.repo, "2026-09-20T10:01:00Z", "Agent",
+                {"description": "Check the runbook", "prompt": "Read docs/runbook.md and try each step."}),
+            use("s4", cls.repo, "2026-09-20T10:02:00Z", "Grep",
+                {"pattern": "fork", "path": os.path.join(cls.repo, "CONTRIBUTING.md")}),
+            # Text a tool writes is no read of the files it names.
+            use("s4", cls.repo, "2026-09-20T10:03:00Z", "Write",
+                {"file_path": os.path.join(cls.repo, "docs/todo.md"), "content": "Update GLOSSARY.md.\n"}),
+            # A bare name resolves against the session's folder: here it names no memory file.
+            use("s4", cls.repo, "2026-09-20T10:04:00Z", "Bash",
+                {"command": "echo '- [Old](feedback_old.md)' >> notes.txt"}),
+            # After a cd elsewhere, a relative path names the file there, not the project's.
+            use("s4", cls.repo, "2026-09-20T10:05:00Z", "Bash",
+                {"command": "cd /tmp/a-copy && cat PROMPTS.md"}),
+            use("s4", cls.repo, "2026-09-20T10:06:00Z", "Bash",
+                {"command": f'cat "{memory.replace("~", "$HOME", 1)}/MEMORY.md"'}),
+            # A path with spaces, quoted or escaped; a cd into a folder with a space in its name.
+            use("s4", cls.repo, "2026-09-20T10:09:00Z", "Bash", {"command": 'cat "docs/meeting notes.md"'}),
+            use("s4", cls.repo, "2026-09-20T10:10:00Z", "Bash", {"command": r"head docs/old\ plans.md"}),
+            use("s4", cls.repo, "2026-09-20T10:11:00Z", "Bash", {"command": "cd 'docs/team days' && cat agenda.md"}),
+            # A cd inside a subshell ends with it.
+            use("s4", cls.repo, "2026-09-20T10:12:00Z", "Bash",
+                {"command": "(cd /tmp && ls) && cat README.md; echo $(cd /tmp; pwd) TERMS.md"}),
+            # "cd" in a brief is prose, not a change of folder.
+            use("s4", cls.repo, "2026-09-20T10:07:00Z", "Agent",
+                {"prompt": "cd into the repo and check docs/ARCHITECTURE.md."}),
+            use("s4", cls.repo, "2026-09-20T10:08:00Z", "Agent", {"prompt": "Follow @TERMS.md."}),
+        ])
+        cls.out = json.loads(run_inventory(cls.repo, cls.home))
+        cls.files = {f["path"]: f for f in cls.out["files"]}
+        cls.memory = memory + "/"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_a_shell_command_reads_a_file_it_names_after_cd(self):
+        self.assertEqual(self.files[self.memory + "feedback_backups.md"]["sessions"],
+                         {"read": 1, "wrote": 0, "last_read": "2026-09-20", "last_wrote": None,
+                          "read_by": {"Bash": 1}})
+
+    def test_each_tool_that_named_the_file_is_counted_apart(self):
+        self.assertEqual(self.files["docs/runbook.md"]["sessions"]["read"], 2)
+        self.assertEqual(self.files["docs/runbook.md"]["sessions"]["read_by"], {"Agent": 1, "Read": 1})
+        self.assertEqual(self.files["CONTRIBUTING.md"]["sessions"]["read_by"], {"Grep": 1})
+
+    def test_a_file_named_in_written_text_is_not_read(self):
+        self.assertEqual(self.files["GLOSSARY.md"]["sessions"]["read_by"], {"Read": 1})
+
+    def test_a_relative_path_after_a_cd_elsewhere_is_not_the_projects_file(self):
+        self.assertEqual(self.files["PROMPTS.md"]["sessions"]["read"], 0)
+
+    def test_a_path_under_home_written_with_its_variable(self):
+        self.assertEqual(self.files[self.memory + "MEMORY.md"]["sessions"]["read_by"], {"Bash": 1})
+
+    def test_cd_in_a_brief_changes_no_folder(self):
+        self.assertEqual(self.files["docs/ARCHITECTURE.md"]["sessions"]["read_by"], {"Agent": 1})
+
+    def test_an_import_names_the_file_after_its_at_sign(self):
+        self.assertEqual(self.files["TERMS.md"]["sessions"]["read_by"], {"Agent": 1, "Bash": 1})
+
+    def test_a_path_with_spaces_is_read_whole(self):
+        for path in ("docs/meeting notes.md", "docs/old plans.md", "docs/team days/agenda.md"):
+            self.assertEqual(self.files[path]["sessions"]["read_by"], {"Bash": 1}, path)
+
+    def test_a_cd_inside_a_subshell_ends_with_it(self):
+        self.assertEqual(self.files["README.md"]["sessions"]["read_by"], {"Bash": 1})
+
+
+class DecisionRecordsCitedByNumber(unittest.TestCase):
+    """"ADR-0024" or "ADR 24" points to the record numbered 24, wherever the repo keeps its
+    numbered decision records."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.repo = fixture_repo.build(os.path.join(cls.tmp.name, "app"), os.path.join(cls.tmp.name, "home"))
+        cls.home = os.path.realpath(os.path.join(cls.tmp.name, "home"))
+        write = fixture_repo._write
+        write(cls.repo, "design/decisions/0001-use-sqlite.md", "# ADR-0001: Use SQLite\n")
+        write(cls.repo, "design/decisions/0024-keep-backups.md",
+              "# ADR-0024: Keep backups\n\nSupersedes ADR 1.\n")
+        write(cls.repo, "design/decisions/superseded/0002-use-files.md", "# ADR-0002: Use files\n")
+        write(cls.repo, "docs/chapters/0024-intro.md", "# Introduction\n")  # numbered, not a decision
+        write(cls.repo, "docs/guide.md", "Backups are kept (ADR-0024).\n\nSee also ADR 1.\n\nADR-0099 is gone.\n\n"
+                                         "ADR-0001/0002 and ADR-0024 et 0002 hold.\n\nSection ADR 1.2 of the spec.\n\n"
+                                         "ADR-0024, 2 steps.\n")
+        write(cls.repo, "design/decisions/0003-cache-reads.md", "# ADR-0003: Cache reads\n")  # cited from code only
+        write(cls.repo, "src/cache.py", "def read():\n    # Cached, see ADR-0003 and ADR 24.\n    pass\n")
+        fixture_repo._commit(cls.repo, "2026-09-20T10:00:00+00:00", "Add decision records")
+        cls.out = json.loads(run_inventory(cls.repo, cls.home))
+        cls.files = {f["path"]: f for f in cls.out["files"]}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_a_citation_by_number_points_to_the_numbered_record(self):
+        cites = {(p["from"], p["to"], p["line"]) for p in self.out["pointers"]
+                 if p["kind"] == "citation" and p["line"] <= 5}
+        self.assertEqual(cites, {
+            ("docs/guide.md", "design/decisions/0024-keep-backups.md", 1),
+            ("docs/guide.md", "design/decisions/0001-use-sqlite.md", 3),
+            ("design/decisions/0024-keep-backups.md", "design/decisions/0001-use-sqlite.md", 3),
+        })
+
+    def test_numbers_listed_after_a_citation_are_cited_too(self):
+        # Same width as the first number: "0001/0002", "0024 et 0002"; "0024, 2 steps" lists nothing.
+        cites = {(p["to"], p["line"]) for p in self.out["pointers"]
+                 if p["kind"] == "citation" and p["from"] == "docs/guide.md" and p["line"] > 5}
+        self.assertEqual(cites, {
+            ("design/decisions/0001-use-sqlite.md", 7),
+            ("design/decisions/superseded/0002-use-files.md", 7),
+            ("design/decisions/0024-keep-backups.md", 7),
+            ("design/decisions/0024-keep-backups.md", 11),
+        })
+
+    def test_cited_records_have_files_pointing_to_them(self):
+        self.assertEqual(self.files["design/decisions/0024-keep-backups.md"]["pointed_to_by"], 1)
+        self.assertEqual(self.files["design/decisions/0001-use-sqlite.md"]["pointed_to_by"], 2)
+        self.assertEqual(self.files["design/decisions/superseded/0002-use-files.md"]["pointed_to_by"], 1)
+        self.assertEqual(self.files["docs/chapters/0024-intro.md"]["pointed_to_by"], 0)
+
+    def test_code_that_cites_a_record_is_listed_and_keeps_it_from_being_an_orphan(self):
+        self.assertEqual(self.out["code_citations"], [
+            {"from": "src/cache.py", "line": 2, "to": "design/decisions/0003-cache-reads.md"},
+            {"from": "src/cache.py", "line": 2, "to": "design/decisions/0024-keep-backups.md"},
+        ])
+        record = self.files["design/decisions/0003-cache-reads.md"]
+        self.assertEqual((record["pointed_to_by"], record["cited_by_code"], record["orphan"]), (0, 1, False))
+        self.assertEqual(self.files["docs/chapters/0024-intro.md"]["cited_by_code"], 0)
 
 
 class InventoryOfACopy(unittest.TestCase):

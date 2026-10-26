@@ -70,7 +70,7 @@ Changes you will not see and that can be undone at no cost. You review them with
 
 ### <file>
 
-#### <passage, or passages sharing a verdict: lines and first words>
+#### <section, passage, or several sharing a verdict: lines and first words>
 
 - **Proposed.** <stays, deleted, moves to X>
 - **Why.** <label>. <what it rests on>
