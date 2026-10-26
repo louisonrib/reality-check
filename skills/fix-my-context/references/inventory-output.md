@@ -72,7 +72,7 @@ A folder unit is every directory, other than the root, that holds doc files, and
 
 ## `pointers[]`
 
-`{from, to, kind, line}`, one entry per line that names the target. `from` and `to` are paths as in `files[].path`; an auto-memory file can point to a repo file. `kind`: `link` (Markdown link), `backtick` (a backticked path that resolves), `import` (`@path` in a file Claude Code or Gemini CLI expands), `rule_paths` (a rule's `paths:`/`globs:`/`applyTo:` matches the target; `line` is `0`). A reference that matches several files (a bare `README.md`) resolves but makes no pointer.
+`{from, to, kind, line}`, one entry per line that names the target. `from` and `to` are paths as in `files[].path`; an auto-memory file can point to a repo file. `kind`: `link` (Markdown link), `backtick` (a backticked path that resolves), `import` (`@path` in a file Claude Code or Gemini CLI expands), `rule_paths` (a rule's `paths:`/`globs:`/`applyTo:` matches the target; `line` is `0`), `citation` (a decision record cited by its number, "ADR-0024" or "ADR 24"; no entry when a link or backticked path on the same line already names it). A decision record is a doc file whose name starts with its number (`0024-…`, `adr-24-…`), in a folder named for decisions (`adr`, `decisions`, `architecture-decisions`) or itself named `adr-…`. A reference that matches several files (a bare `README.md`, a number two records share) resolves but makes no pointer.
 
 ## `duplicates[]`
 

@@ -368,6 +368,43 @@ class ReadsByAnyTool(unittest.TestCase):
         self.assertEqual(self.files["PROMPTS.md"]["sessions"]["read"], 0)
 
 
+class DecisionRecordsCitedByNumber(unittest.TestCase):
+    """"ADR-0024" or "ADR 24" points to the record numbered 24, wherever the repo keeps its
+    numbered decision records."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.repo = fixture_repo.build(os.path.join(cls.tmp.name, "app"), os.path.join(cls.tmp.name, "home"))
+        cls.home = os.path.realpath(os.path.join(cls.tmp.name, "home"))
+        write = fixture_repo._write
+        write(cls.repo, "design/decisions/0001-use-sqlite.md", "# ADR-0001: Use SQLite\n")
+        write(cls.repo, "design/decisions/0024-keep-backups.md",
+              "# ADR-0024: Keep backups\n\nSupersedes ADR 1.\n")
+        write(cls.repo, "docs/chapters/0024-intro.md", "# Introduction\n")  # numbered, not a decision
+        write(cls.repo, "docs/guide.md", "Backups are kept (ADR-0024).\n\nSee also ADR 1.\n\nADR-0099 is gone.\n")
+        fixture_repo._commit(cls.repo, "2026-09-20T10:00:00+00:00", "Add decision records")
+        cls.out = json.loads(run_inventory(cls.repo, cls.home))
+        cls.files = {f["path"]: f for f in cls.out["files"]}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_a_citation_by_number_points_to_the_numbered_record(self):
+        cites = {(p["from"], p["to"], p["line"]) for p in self.out["pointers"] if p["kind"] == "citation"}
+        self.assertEqual(cites, {
+            ("docs/guide.md", "design/decisions/0024-keep-backups.md", 1),
+            ("docs/guide.md", "design/decisions/0001-use-sqlite.md", 3),
+            ("design/decisions/0024-keep-backups.md", "design/decisions/0001-use-sqlite.md", 3),
+        })
+
+    def test_cited_records_have_files_pointing_to_them(self):
+        self.assertEqual(self.files["design/decisions/0024-keep-backups.md"]["pointed_to_by"], 1)
+        self.assertEqual(self.files["design/decisions/0001-use-sqlite.md"]["pointed_to_by"], 2)
+        self.assertEqual(self.files["docs/chapters/0024-intro.md"]["pointed_to_by"], 0)
+
+
 class InventoryOfACopy(unittest.TestCase):
     """Run on a copy made elsewhere, the inventory finds no session of its own and names the
     checkout whose sessions it could read instead."""

@@ -35,6 +35,10 @@ IMPORT = re.compile(r"(?:^|(?<=\s))@([^\s`]+)")
 ISSUE = re.compile(r"(?<![\w&/#])#\d{1,6}\b|/(?:pull|issues)/\d+")
 DATE = re.compile(r"(?<!\d)20\d\d-[01]\d-[0-3]\d(?!\d)")
 FENCE = re.compile(r"^\s*(```|~~~)")
+# Numbered decision records (`0024-keep-backups.md`, `adr-24.md`) and their citations ("ADR-0024", "ADR 24").
+NUMBERED = re.compile(r"(?i)^(adr[-_ ]?)?0*(\d{1,5})(?=[-_ .])")
+DECISION_FOLDER = re.compile(r"(?i)(?:^|[-_ ])(?:adrs?|decisions?)(?:[-_ ]|$)")
+CITATION = re.compile(r"(?i)(?<![\w/-])ADR[-_ ]?(\d{1,5})(?!\d)")
 
 
 def git(repo, *args):
@@ -233,6 +237,33 @@ def imports_in(text):
             token = m.group(1).rstrip(".,;:)")
             if token:
                 yield n, token
+
+
+def decision_records(docs):
+    """Number -> path of each numbered decision record: a numbered doc file in a folder named for
+    decisions (`adr`, `decisions`, `architecture-decisions`), or named `adr-<n>-…` itself.
+    A number two records share maps to None: citing it names no one file."""
+    out = {}
+    for path in docs:
+        folder, name = posixpath.split(path)
+        m = NUMBERED.match(name)
+        if m and (m.group(1) or DECISION_FOLDER.search(posixpath.basename(folder))):
+            n = int(m.group(2))
+            out[n] = None if n in out else path
+    return out
+
+
+def citations(path, text, records, named):
+    """Pointers from path to the decision records its text cites by number, except on a line
+    whose link or backticked path already names that record (`named`, from scan_refs)."""
+    seen = {(to, n) for n, to, _ in named}
+    out = set()
+    for n, line in prose_lines(text):
+        for m in CITATION.finditer(line):
+            to = records.get(int(m.group(1)))
+            if to and to != path and (to, n) not in seen:
+                out.add((path, to, "citation", n))
+    return out
 
 
 def scan_refs(text, resolver, top_level_exists, imports):
@@ -1075,6 +1106,7 @@ def analyse(tree, ctx, with_history):
             histories = list(pool.map(lambda p: history(repo, p), tree.docs))
     files, pointers, texts = [], set(), {}
     agents_condition_met = not claude_md_above(ctx.history_of, tree)
+    records = decision_records(tree.docs)
 
     for path, (hist, commit_dates) in zip(tree.docs, histories):
         text = tree.read(path)
@@ -1085,6 +1117,7 @@ def analyse(tree, ctx, with_history):
             named, unresolved = scan_refs(text, lambda t, p=path: resolve(t, p, tree), tree.exists,
                                           expands_imports(path))
             pointers |= {(path, to, kind, n) for n, to, kind in named if to != path and to in tree.docs}
+            pointers |= citations(path, text, records, named)
             for pattern in frontmatter_patterns(text):
                 rx = glob_regex(pattern)
                 pointers |= {(path, d, "rule_paths", 0) for d in tree.docs if rx.match(d) and d != path}
@@ -1112,6 +1145,7 @@ def analyse(tree, ctx, with_history):
 
         named, unresolved = scan_refs(text, resolver, tree.exists, False)
         pointers |= {(path, to, kind, n) for n, to, kind in named if to != path}
+        pointers |= citations(path, text, records, named)
         key = ("abs", abspath)
         harness = [rule("claude-code", "session_start",
                         "The auto-memory index: its first 200 lines or 25KB load when a session starts.",
