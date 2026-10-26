@@ -1,7 +1,7 @@
 {
   "name": "reality-check",
-  "version": "0.3.0",
-  "description": "Claude Code skills that audit your premises, declare their sources, break retry loops, and keep your documents written for their reader.",
+  "version": "0.4.0",
+  "description": "Claude Code skills that audit your premises, declare their sources, break retry loops, keep your documents written for their reader, and repair a project's agent docs.",
   "author": {
     "name": "louisonrib",
     "url": "https://github.com/louisonrib"
