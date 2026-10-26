@@ -580,8 +580,29 @@ MARKERS = ('"instructions"', '"nested_memory"', '"tool_use"', "<command-name>")
 # A doc path written in a tool's input: absolute, under `~/` or `$HOME/`, or relative; an `@` import's `@` is no part of it.
 NAMED_DOC = re.compile(r"(?<![\w./~$-])((?:~/|\$HOME/|/)?(?!@)(?:[\w@+.-]+/)*[\w@+-][\w@+.-]*\.(?:md|mdx|mdc|rst|adoc))"
                        r"(?![\w/-])")
-CD = re.compile(r"(?<![\w-])cd\s+([\"']?)([^\s;&|()\"']+)\1")
+# A doc path with spaces, quoted whole or with each space escaped (`a\ b.md`).
+SPACED_DOC = re.compile(r"([\"'])([^\"'\n]*\s[^\"'\n]*\.(?:md|mdx|mdc|rst|adoc))\1"
+                        r"|((?:[^\s\"'\\;&|()]|\\ )*\\ (?:[^\s\"'\\;&|()]|\\ )*\.(?:md|mdx|mdc|rst|adoc))(?![\w/-])")
+CD = re.compile(r"(?<![\w-])cd\s+(?:\"([^\"\n]+)\"|'([^'\n]+)'|((?:[^\s;&|()\"'\\]|\\ )+))")
 PATH_FIELDS = ("file_path", "notebook_path", "path")
+
+
+def subshells(command):
+    """(position, "open" or "close", None) for each parenthesis of a shell command outside quotes: a
+    `cd` inside `( … )` or `$( … )` ends with it."""
+    out, quote, escaped = [], None, False
+    for i, c in enumerate(command):
+        if escaped:
+            escaped = False
+        elif c == "\\" and quote != "'":
+            escaped = True
+        elif quote:
+            quote = None if c == quote else quote
+        elif c in "\"'":
+            quote = c
+        elif c in "()":
+            out.append((i, "open" if c == "(" else "close", None))
+    return out
 
 
 def strings(value):
@@ -637,7 +658,8 @@ class Transcripts:
     def paths_named(self, inp, cwd):
         """Keys of the files a tool's input names: its path fields whole, and every doc path in
         its text. A relative path resolves against the folder of the last `cd` before it in the
-        shell command (`cd <memory dir> && cat feedback.md`), else against the session's folder."""
+        shell command (`cd <memory dir> && cat feedback.md`) and not closed by a subshell, else
+        against the session's folder."""
         def absolute(p, base):
             if p == "~" or p.startswith("~/"):
                 return self.home + p[1:]
@@ -649,11 +671,19 @@ class Transcripts:
         command = inp.get("command")
         for text in strings(inp):
             base = cwd
-            cds = CD.finditer(text) if text == command else ()  # a `cd` in a brief is prose
-            hits = sorted([(m.start(), True, m.group(2)) for m in cds]
-                          + [(m.start(), False, m.group(1)) for m in NAMED_DOC.finditer(text)])
-            for _, is_cd, p in hits:
-                if is_cd:
+            hits = [(m.start(), "doc", m.group(1)) for m in NAMED_DOC.finditer(text)]
+            hits += [(m.start(), "doc", m.group(2) or m.group(3).replace("\\ ", " "))
+                     for m in SPACED_DOC.finditer(text)]
+            if text == command:  # a `cd` in a brief is prose
+                hits += [(m.start(), "cd", next(g for g in m.groups() if g).replace("\\ ", " "))
+                         for m in CD.finditer(text)] + subshells(text)
+            outer = []  # the folder each open subshell started in
+            for _, kind, p in sorted(hits):
+                if kind == "open":
+                    outer.append(base)
+                elif kind == "close":
+                    base = outer.pop() if outer else base
+                elif kind == "cd":
                     base = absolute(p, base)
                 else:
                     paths.add(absolute(p, base))

@@ -325,6 +325,10 @@ class ReadsByAnyTool(unittest.TestCase):
         cls.home = os.path.realpath(os.path.join(cls.tmp.name, "home"))
         main = os.path.join(cls.home, ".claude/projects", fixture_repo.slug(cls.repo))
         memory = "~/.claude/projects/" + fixture_repo.slug(cls.repo) + "/memory"
+        fixture_repo._write(cls.repo, "docs/meeting notes.md", "# Notes\n")
+        fixture_repo._write(cls.repo, "docs/old plans.md", "# Plans\n")
+        fixture_repo._write(cls.repo, "docs/team days/agenda.md", "# Agenda\n")
+        fixture_repo._commit(cls.repo, "2026-09-19T10:00:00+00:00", "Add docs with spaces in their paths")
         use = fixture_repo._tool_use
         fixture_repo._jsonl(os.path.join(main, "s4.jsonl"), [
             use("s4", cls.repo, "2026-09-20T10:00:00Z", "Bash",
@@ -342,7 +346,15 @@ class ReadsByAnyTool(unittest.TestCase):
             # After a cd elsewhere, a relative path names the file there, not the project's.
             use("s4", cls.repo, "2026-09-20T10:05:00Z", "Bash",
                 {"command": "cd /tmp/a-copy && cat PROMPTS.md"}),
-            use("s4", cls.repo, "2026-09-20T10:06:00Z", "Bash", {"command": f'cat "{memory.replace("~", "$HOME", 1)}/MEMORY.md"'}),
+            use("s4", cls.repo, "2026-09-20T10:06:00Z", "Bash",
+                {"command": f'cat "{memory.replace("~", "$HOME", 1)}/MEMORY.md"'}),
+            # A path with spaces, quoted or escaped; a cd into a folder with a space in its name.
+            use("s4", cls.repo, "2026-09-20T10:09:00Z", "Bash", {"command": 'cat "docs/meeting notes.md"'}),
+            use("s4", cls.repo, "2026-09-20T10:10:00Z", "Bash", {"command": r"head docs/old\ plans.md"}),
+            use("s4", cls.repo, "2026-09-20T10:11:00Z", "Bash", {"command": "cd 'docs/team days' && cat agenda.md"}),
+            # A cd inside a subshell ends with it.
+            use("s4", cls.repo, "2026-09-20T10:12:00Z", "Bash",
+                {"command": "(cd /tmp && ls) && cat README.md; echo $(cd /tmp; pwd) TERMS.md"}),
             # "cd" in a brief is prose, not a change of folder.
             use("s4", cls.repo, "2026-09-20T10:07:00Z", "Agent",
                 {"prompt": "cd into the repo and check docs/ARCHITECTURE.md."}),
@@ -379,7 +391,14 @@ class ReadsByAnyTool(unittest.TestCase):
         self.assertEqual(self.files["docs/ARCHITECTURE.md"]["sessions"]["read_by"], {"Agent": 1})
 
     def test_an_import_names_the_file_after_its_at_sign(self):
-        self.assertEqual(self.files["TERMS.md"]["sessions"]["read_by"], {"Agent": 1})
+        self.assertEqual(self.files["TERMS.md"]["sessions"]["read_by"], {"Agent": 1, "Bash": 1})
+
+    def test_a_path_with_spaces_is_read_whole(self):
+        for path in ("docs/meeting notes.md", "docs/old plans.md", "docs/team days/agenda.md"):
+            self.assertEqual(self.files[path]["sessions"]["read_by"], {"Bash": 1}, path)
+
+    def test_a_cd_inside_a_subshell_ends_with_it(self):
+        self.assertEqual(self.files["README.md"]["sessions"]["read_by"], {"Bash": 1})
 
 
 class DecisionRecordsCitedByNumber(unittest.TestCase):
