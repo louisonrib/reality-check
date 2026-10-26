@@ -74,7 +74,7 @@ Load [`references/growth-rules.md`](references/growth-rules.md).
 
 Load [`references/placement.md`](references/placement.md).
 
-*Done when* every passage of every always-loaded file carries a verdict, every living doc that stays is covered section by section, and every entry `inventory.py repeats` lists has a verdict.
+*Done when* every section of every always-loaded file carries the answer to whether it must load in every session, every passage of the sections that stay carries a verdict, every living doc that stays is covered section by section, and every entry `inventory.py repeats` lists has a verdict.
 
 ## Asking the user
 

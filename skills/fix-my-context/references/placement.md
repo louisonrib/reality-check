@@ -1,19 +1,21 @@
 # Stage 5: placement and pruning in the files that stay
 
-Two kinds of file, judged differently: the always-loaded files passage by passage, and the other docs that stay section by section, each by the criteria of its type.
+Two kinds of file, judged differently: the always-loaded files section by section, then passage by passage, and the other docs that stay section by section, each by the criteria of its type.
 
 ## Always-loaded files
 
-These are the files that enter every session: those with a `harness` rule whose `when` is `session_start` (and whose `condition_met` is not `false`), and everything they `@`-import (`pointers` of kind `import`). In Claude Code that is `CLAUDE.md` at the root and above it, `AGENTS.md` when no `CLAUDE.md` is loaded, unscoped `.claude/rules/*.md` and the `MEMORY.md` index. Each costs context in every session, so each passage has to earn its place.
+These are the files that enter every session: those with a `harness` rule whose `when` is `session_start` (and whose `condition_met` is not `false`), and everything they `@`-import (`pointers` of kind `import`). In Claude Code that is `CLAUDE.md` at the root and above it, `AGENTS.md` when no `CLAUDE.md` is loaded, unscoped `.claude/rules/*.md` and the `MEMORY.md` index. Each costs context in every session. All Anthropic sources are [vendor].
 
-A passage is the smallest piece that says one thing: a bullet, a table row, a short paragraph. Give each one a verdict from this grid. All Anthropic sources are [vendor].
+**Sections first.** Ask of each section, under its heading: must it load in every session? [Anthropic memory page][memory]: "Keep it to facts Claude should hold in every session"; "Use path-scoped rules to load instructions only when Claude works with matching files, or trim content that isn't needed in every session." A section the agent needs only when it works on certain files moves whole to a rule scoped with `paths:` on those files. Writing a doc is working on a file: "A path-scoped rule loads when Claude uses the Read, Write, or Edit tool on a matching file" (same page). A section on where each kind of doc lives and how to write it is needed when the agent writes a `.md`; scoped to the doc paths, it stays out of the sessions that change only code. Ask it of every section, including one whose passages would each stay by the grid below: a passage judged alone can earn its place while its section loads in sessions that never use it.
+
+**Then the passages** of the sections that stay. A passage is the smallest piece that says one thing: a bullet, a table row, a short paragraph. Give each one a verdict from this grid.
 
 | The passage holds | Verdict | Source |
 |---|---|---|
 | A command the agent cannot guess; a style rule that differs from defaults; a gotcha that is not self-evident; an architectural decision specific to the project | Stays | [Anthropic best practices][bp], "Include" list: "Bash commands Claude can't guess", "Code style rules that differ from defaults", "Common gotchas or behaviors that aren't self-evident", "Architectural decisions specific to your project" |
 | A "never do X" rule | Stays | [Anthropic features overview][features]: "Put it in CLAUDE.md if Claude should always know it: … "never do X" rules." |
 | Something the agent can read in the code: dependency list, directory layout, file-by-file description | Deleted | [Anthropic best practices][bp] excludes "Anything Claude can figure out by reading code"; `/doctor` "cuts content Claude can derive from the codebase, such as directory layouts, dependency lists, and architecture overviews" ([memory page][memory]) |
-| A multi-step procedure, or a convention for one area of the code | Moves to a skill, or to a nested instruction file or a rule scoped with `paths:` | [Anthropic memory page][memory]: "If an entry is a multi-step procedure or only matters for one part of the codebase, move it to a skill or a path-scoped rule instead." |
+| A multi-step procedure, or a convention for one area of the repo, code or docs | Moves to a skill, or to a nested instruction file or a rule scoped with `paths:` | [Anthropic memory page][memory]: "If an entry is a multi-step procedure or only matters for one part of the codebase, move it to a skill or a path-scoped rule instead." |
 | Something that must happen every time | Moves to a hook or a permission | [Anthropic best practices][bp]: "Unlike CLAUDE.md instructions which are advisory, hooks are deterministic and guarantee the action happens." |
 | A style rule a tool can check | Moves to the linter or CI | [Cursor rules][cursor] [vendor]: "Copying entire style guides: Use a linter instead."; [dos Santos et al.][smells] [measured]: "Lint Leakage" in 62 of 100 popular repos' files |
 | A note for the humans who maintain the file | Moves to an HTML comment | [Anthropic memory page][memory]: HTML comments "are stripped before the content is injected into Claude's context" |
@@ -30,7 +32,7 @@ Four kinds have no settled answer; present the sides and let the user decide:
 
 **Length.** Judge content, not size. No study measured a line or word threshold; the vendors' numbers (200, 500, 1,000 lines, 32 KiB) come with no stated basis.
 
-**Pruning.** Prune passage by passage. [Chakrabarti][chakrabarti] [measured, single-author preprint]: a wholesale rewrite resets a file's size but not its growth rate (4.1 % per commit before the first rewrite, 4.9 % after).
+**Pruning.** Prune in place: move sections, cut passages. [Chakrabarti][chakrabarti] [measured, single-author preprint]: a wholesale rewrite resets a file's size but not its growth rate (4.1 % per commit before the first rewrite, 4.9 % after).
 
 ## Living docs and dated records
 
