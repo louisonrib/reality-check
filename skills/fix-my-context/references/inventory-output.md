@@ -23,6 +23,7 @@ A field the run could not establish is `null` or an empty list, and `limits` say
 | `duplicates` | Passages repeated verbatim across files. |
 | `global_refs` | Lines of the repo that hand something to one of the user's global files (`scope: user`): `{from, line, to, token, via}`. `via`: `import` (an `@~/…` import in a file that expands imports; `to` may be a file the inventory does not list), `path` (the file's `~/` path), `name` (its file name, when no repo file has that name: `~/.claude/RULES.md` named `RULES.md`), `global` (a name the repo shares, such as `CLAUDE.md`, after the word "global" on the line). Each is a rule whose wording lives in the global file. |
 | `memory_refs` | References from the repo's tracked text files, code included, to auto-memory files: `{from, line, to, token, via}`, `via: file` for the file name (or its stem, when it holds `-` or `_`), `via: name` for the `name:` of the file's front matter (a `[[name]]` link, a comment). A one-word stem or name is not matched. The pointer graph does not hold these: emptying or moving a memory file breaks each of them. |
+| `code_citations` | Lines of the repo's tracked files that are not doc files (code, config, SQL) and cite a decision record by number, as `citation` pointers do: `{from, line, to}`. The pointer graph does not hold these; `cited_by_code` counts them per record. |
 | `tools` | Installed skills, commands and agents that name at least one doc file or folder, keyed by tool id. |
 | `doc_writers` | Mechanisms of the harness that write docs with no rule in the docs asking for it (below). |
 | `skills_invoked` | Every skill or slash command invoked in this project's transcripts, used or not by a doc. |
@@ -49,7 +50,8 @@ A field the run could not establish is `null` or an empty list, and `limits` say
 | `dates` | Count of ISO dates (`2026-10-21`). |
 | `dated` | The date the doc gives itself, or `null`: `date`, `source` (`name` for a date in the file name, `header` for a labelled line among the first 10, such as `Date: …` or `**Status:** Accepted, …`), `line` (`null` for `name`), `commits_after` (commits to the file on a later day, its creating commit aside) and `last_after` (the latest of those days). A dated doc with commits after its date has been edited since: neither left as it was written nor declared living. |
 | `pointed_to_by` | Number of other doc files that point to this one (`pointers` whose `to` is this file, `rule_paths` aside, counted by distinct `from`). The figure to quote for "what points to it": `pointers` holds one entry per line, so a file named on several lines counts several times there. |
-| `orphan` | `true` when the file has no harness rule, no tool naming it (`former_path` and a folder do not count), `pointed_to_by` 0, `sessions.read` 0, never loaded in a transcript, and no Cursor conversation mentions it. |
+| `cited_by_code` | Number of files that are not doc files and cite this decision record by number (`code_citations`, counted by distinct `from`); `0` for any other file. |
+| `orphan` | `true` when the file has no harness rule, no tool naming it (`former_path` and a folder do not count), `pointed_to_by` 0, `cited_by_code` 0, `sessions.read` 0, never loaded in a transcript, and no Cursor conversation mentions it. |
 
 ### `harness[]`
 

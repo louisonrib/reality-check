@@ -400,6 +400,8 @@ class DecisionRecordsCitedByNumber(unittest.TestCase):
         write(cls.repo, "docs/guide.md", "Backups are kept (ADR-0024).\n\nSee also ADR 1.\n\nADR-0099 is gone.\n\n"
                                          "ADR-0001/0002 and ADR-0024 et 0002 hold.\n\nSection ADR 1.2 of the spec.\n\n"
                                          "ADR-0024, 2 steps.\n")
+        write(cls.repo, "design/decisions/0003-cache-reads.md", "# ADR-0003: Cache reads\n")  # cited from code only
+        write(cls.repo, "src/cache.py", "def read():\n    # Cached, see ADR-0003 and ADR 24.\n    pass\n")
         fixture_repo._commit(cls.repo, "2026-09-20T10:00:00+00:00", "Add decision records")
         cls.out = json.loads(run_inventory(cls.repo, cls.home))
         cls.files = {f["path"]: f for f in cls.out["files"]}
@@ -433,6 +435,15 @@ class DecisionRecordsCitedByNumber(unittest.TestCase):
         self.assertEqual(self.files["design/decisions/0001-use-sqlite.md"]["pointed_to_by"], 2)
         self.assertEqual(self.files["design/decisions/superseded/0002-use-files.md"]["pointed_to_by"], 1)
         self.assertEqual(self.files["docs/chapters/0024-intro.md"]["pointed_to_by"], 0)
+
+    def test_code_that_cites_a_record_is_listed_and_keeps_it_from_being_an_orphan(self):
+        self.assertEqual(self.out["code_citations"], [
+            {"from": "src/cache.py", "line": 2, "to": "design/decisions/0003-cache-reads.md"},
+            {"from": "src/cache.py", "line": 2, "to": "design/decisions/0024-keep-backups.md"},
+        ])
+        record = self.files["design/decisions/0003-cache-reads.md"]
+        self.assertEqual((record["pointed_to_by"], record["cited_by_code"], record["orphan"]), (0, 1, False))
+        self.assertEqual(self.files["docs/chapters/0024-intro.md"]["cited_by_code"], 0)
 
 
 class InventoryOfACopy(unittest.TestCase):

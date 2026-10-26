@@ -255,19 +255,38 @@ def decision_records(docs):
     return out
 
 
+def cited(line, records):
+    """The decision records a line cites by number."""
+    for m in CITATION.finditer(line):
+        for number in [m.group(1)] + [d for d in re.findall(r"\d+", m.group(2)) if len(d) == len(m.group(1))]:
+            if records.get(int(number)):
+                yield records[int(number)]
+
+
 def citations(path, text, records, named):
     """Pointers from path to the decision records its text cites by number, except on a line
     whose link or backticked path already names that record (`named`, from scan_refs)."""
     seen = {(to, n) for n, to, _ in named}
-    out = set()
-    for n, line in prose_lines(text):
-        for m in CITATION.finditer(line):
-            numbers = [m.group(1)] + [d for d in re.findall(r"\d+", m.group(2)) if len(d) == len(m.group(1))]
-            for number in numbers:
-                to = records.get(int(number))
-                if to and to != path and (to, n) not in seen:
-                    out.add((path, to, "citation", n))
-    return out
+    return {(path, to, "citation", n) for n, line in prose_lines(text) for to in cited(line, records)
+            if to != path and (to, n) not in seen}
+
+
+def code_citations(tree, records):
+    """{from, line, to} for each line of a tracked file that is no doc file (code, config) and
+    cites a decision record by number, read at the tree's commit or in the working tree."""
+    if not records:
+        return []
+    argv = ["git", "-C", tree.repo, "grep", "-n", "-I", "--null", "-i", "-E", "ADR[-_ ]?[0-9]"]
+    out = subprocess.run(argv + ([tree.ref] if tree.ref else []), capture_output=True, encoding="utf-8",
+                         errors="replace").stdout
+    hits = set()
+    for record in out.splitlines():
+        path, n, text = record.split("\0", 2)  # --null with -n: path NUL line NUL text
+        if tree.ref:
+            path = path[len(tree.ref) + 1:]  # `<ref>:<path>`
+        if path in tree.files and not is_doc(path):
+            hits |= {(path, int(n), to) for to in cited(text, records)}
+    return [{"from": f, "line": n, "to": t} for f, n, t in sorted(hits)]
 
 
 def scan_refs(text, resolver, top_level_exists, imports):
@@ -1187,6 +1206,10 @@ def analyse(tree, ctx, with_history):
     for f, t, kind, _ in pointers:
         if kind != "rule_paths":
             inbound.setdefault(t, set()).add(f)
+    from_code = code_citations(tree, records)
+    citing = {}  # record -> the code files that cite it
+    for c in from_code:
+        citing.setdefault(c["to"], set()).add(c["from"])
     for f in files:
         if f["scope"] == "user":
             continue
@@ -1196,11 +1219,12 @@ def analyse(tree, ctx, with_history):
         f["cursor_conversations"] = None if ctx.cursor is None else sum(
             1 for text in ctx.cursor.values() if mentions(text, f["path"]))
         f["pointed_to_by"] = len(inbound.get(f["path"], ()))
+        f["cited_by_code"] = len(citing.get(f["path"], ())) if f["scope"] == "repo" else 0
         readers = [e for e in f["named_by_tools"] if e["via"] != "former_path"]
-        f["orphan"] = not (f["harness"] or readers or f["pointed_to_by"]
+        f["orphan"] = not (f["harness"] or readers or f["pointed_to_by"] or f["cited_by_code"]
                            or f["loaded_in_sessions"] or f["sessions"]["read"] or f["cursor_conversations"])
     return {"files": sorted(files, key=lambda f: (f["scope"], f["path"])), "pointers": pointers,
-            "texts": texts, "named": named, "folders": folders}
+            "texts": texts, "named": named, "folders": folders, "code_citations": from_code}
 
 
 def inventory(repo, history_of):
@@ -1237,6 +1261,7 @@ def inventory(repo, history_of):
         "pointers": [{"from": f, "to": t, "kind": k, "line": n} for f, t, k, n in sorted(state["pointers"])],
         "duplicates": duplicates(state["texts"]),
         "memory_refs": memory_refs(repo, ctx.memory, home),
+        "code_citations": state["code_citations"],
         "global_refs": global_refs(repo, tree, state["texts"], ctx.user_files, home),
         "tools": tools_out,
         "doc_writers": doc_writers(ctx, tree, invoked),
