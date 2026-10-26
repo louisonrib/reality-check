@@ -136,9 +136,10 @@ class InventoryOnFixture(unittest.TestCase):
 
     def test_sessions_that_read_or_wrote_a_file_are_counted(self):
         self.assertEqual(self.repo_file("GLOSSARY.md")["sessions"],
-                         {"read": 1, "wrote": 1, "last_read": "2026-09-10", "last_wrote": "2026-09-01"})
+                         {"read": 1, "wrote": 1, "last_read": "2026-09-10", "last_wrote": "2026-09-01",
+                          "read_by": {"Read": 1}})
         self.assertEqual(self.repo_file("docs/ARCHITECTURE.md")["sessions"],
-                         {"read": 0, "wrote": 1, "last_read": None, "last_wrote": "2026-09-10"})
+                         {"read": 0, "wrote": 1, "last_read": None, "last_wrote": "2026-09-10", "read_by": {}})
 
     def test_the_session_that_created_a_file_and_its_skills(self):
         self.assertEqual(self.repo_file("GLOSSARY.md")["created_in_session"],
@@ -311,6 +312,60 @@ class FilesThatPointToAFile(unittest.TestCase):
         self.assertEqual(files["CONTRIBUTING.md"]["pointed_to_by"], 2)
         # A rule's paths: match is a loading condition, not a pointer someone follows.
         self.assertEqual(files["docs/notes/old-ideas.md"]["pointed_to_by"], 0)
+
+
+class ReadsByAnyTool(unittest.TestCase):
+    """A session reads a file when any tool's input names its path, not only the Read tool:
+    a shell command, a search, a brief handed to a subagent. Each tool is counted apart."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.repo = fixture_repo.build(os.path.join(cls.tmp.name, "app"), os.path.join(cls.tmp.name, "home"))
+        cls.home = os.path.realpath(os.path.join(cls.tmp.name, "home"))
+        main = os.path.join(cls.home, ".claude/projects", fixture_repo.slug(cls.repo))
+        memory = "~/.claude/projects/" + fixture_repo.slug(cls.repo) + "/memory"
+        use = fixture_repo._tool_use
+        fixture_repo._jsonl(os.path.join(main, "s4.jsonl"), [
+            use("s4", cls.repo, "2026-09-20T10:00:00Z", "Bash",
+                {"command": f"cd {memory} && cat feedback_backups.md"}),
+            use("s4", cls.repo, "2026-09-20T10:01:00Z", "Agent",
+                {"description": "Check the runbook", "prompt": "Read docs/runbook.md and try each step."}),
+            use("s4", cls.repo, "2026-09-20T10:02:00Z", "Grep",
+                {"pattern": "fork", "path": os.path.join(cls.repo, "CONTRIBUTING.md")}),
+            # Text a tool writes is no read of the files it names.
+            use("s4", cls.repo, "2026-09-20T10:03:00Z", "Write",
+                {"file_path": os.path.join(cls.repo, "docs/todo.md"), "content": "Update GLOSSARY.md.\n"}),
+            # A bare name resolves against the session's folder: here it names no memory file.
+            use("s4", cls.repo, "2026-09-20T10:04:00Z", "Bash",
+                {"command": "echo '- [Old](feedback_old.md)' >> notes.txt"}),
+            # After a cd elsewhere, a relative path names the file there, not the project's.
+            use("s4", cls.repo, "2026-09-20T10:05:00Z", "Bash",
+                {"command": "cd /tmp/a-copy && cat PROMPTS.md"}),
+        ])
+        cls.out = json.loads(run_inventory(cls.repo, cls.home))
+        cls.files = {f["path"]: f for f in cls.out["files"]}
+        cls.memory = memory + "/"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_a_shell_command_reads_a_file_it_names_after_cd(self):
+        self.assertEqual(self.files[self.memory + "feedback_backups.md"]["sessions"],
+                         {"read": 1, "wrote": 0, "last_read": "2026-09-20", "last_wrote": None,
+                          "read_by": {"Bash": 1}})
+
+    def test_each_tool_that_named_the_file_is_counted_apart(self):
+        self.assertEqual(self.files["docs/runbook.md"]["sessions"]["read"], 2)
+        self.assertEqual(self.files["docs/runbook.md"]["sessions"]["read_by"], {"Agent": 1, "Read": 1})
+        self.assertEqual(self.files["CONTRIBUTING.md"]["sessions"]["read_by"], {"Grep": 1})
+
+    def test_a_file_named_in_written_text_is_not_read(self):
+        self.assertEqual(self.files["GLOSSARY.md"]["sessions"]["read_by"], {"Read": 1})
+
+    def test_a_relative_path_after_a_cd_elsewhere_is_not_the_projects_file(self):
+        self.assertEqual(self.files["PROMPTS.md"]["sessions"]["read"], 0)
 
 
 class InventoryOfACopy(unittest.TestCase):

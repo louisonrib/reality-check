@@ -523,6 +523,21 @@ TS = re.compile(r'"timestamp":\s*"([^"]+)"')
 CWD = re.compile(r'"cwd":\s*"([^"]+)"')
 WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 MARKERS = ('"instructions"', '"nested_memory"', '"tool_use"', "<command-name>")
+# A doc path written in a tool's input: absolute, `~/`-prefixed or relative.
+NAMED_DOC = re.compile(r"(?<![\w./~-])((?:~/|/)?(?:[\w@+.-]+/)*[\w@+-][\w@+.-]*\.(?:md|mdx|mdc|rst|adoc))(?![\w/-])")
+CD = re.compile(r"(?<![\w-])cd\s+([\"']?)([^\s;&|()\"']+)\1")
+PATH_FIELDS = ("file_path", "notebook_path", "path")
+
+
+def strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from strings(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from strings(v)
 
 
 class Transcripts:
@@ -534,6 +549,7 @@ class Transcripts:
         self.memory_dir = auto_memory_dir(history_of, home)
         self.dirs, self.session_dates = set(), {}
         self.loaded, self.read, self.wrote = {}, {}, {}  # key -> {session: last date}
+        self.read_by = {}  # key -> {tool name: {session}}
         self.loaded_first = {}  # key -> {session: first date}
         self.first_write = {}  # key -> (timestamp, session)
         self.skills = []  # (session, name, date, made by a subagent)
@@ -561,6 +577,27 @@ class Transcripts:
         if m:
             return ("repo", m.group(1))
         return ("abs", path)
+
+    def named(self, inp, cwd):
+        """Keys of the files a tool's input names: its path fields whole, and every doc path in
+        its text. A relative path resolves against the folder of the last `cd` before it in the
+        same text (`cd <memory dir> && cat feedback.md`), else against the session's folder."""
+        def absolute(p, base):
+            if p == "~" or p.startswith("~/"):
+                return self.home + p[1:]
+            return os.path.join(base, p) if base else (p if p.startswith("/") else None)
+
+        paths = {absolute(inp[k], cwd) for k in PATH_FIELDS if isinstance(inp.get(k), str) and inp[k]}
+        for text in strings(inp):
+            base = cwd
+            hits = sorted([(m.start(), True, m.group(2)) for m in CD.finditer(text)]
+                          + [(m.start(), False, m.group(1)) for m in NAMED_DOC.finditer(text)])
+            for _, is_cd, p in hits:
+                if is_cd:
+                    base = absolute(p, base)
+                else:
+                    paths.add(absolute(p, base))
+        return {self.key(p) for p in paths if p}
 
     def _read_file(self, path, dirname):
         stem = os.path.splitext(os.path.basename(path))[0]
@@ -631,16 +668,18 @@ class Transcripts:
                 name = b.get("name")
                 if name == "Skill" and inp.get("skill"):
                     self.skills.append((sid, inp["skill"].lstrip("/"), date, subagent))
-                path = inp.get("file_path") or inp.get("notebook_path")
-                if not path:
-                    continue
-                key = self.key(path)
-                if name == "Read":
-                    self._mark(self.read, key, sid, date)
-                elif name in WRITE_TOOLS:
+                if name in WRITE_TOOLS:  # the text it writes names files it does not read
+                    path = inp.get("file_path") or inp.get("notebook_path")
+                    if not path:
+                        continue
+                    key = self.key(path)
                     self._mark(self.wrote, key, sid, date)
                     if name == "Write" and (key not in self.first_write or ts < self.first_write[key][0]):
                         self.first_write[key] = (ts, sid)
+                    continue
+                for key in self.named(inp, e.get("cwd")):
+                    self._mark(self.read, key, sid, date)
+                    self.read_by.setdefault(key, {}).setdefault(name, set()).add(sid)
 
     def loaded_in_sessions(self, key):
         sessions = self.loaded.get(key)
@@ -652,7 +691,8 @@ class Transcripts:
     def sessions(self, key):
         r, w = self.read.get(key, {}), self.wrote.get(key, {})
         return {"read": len(r), "wrote": len(w), "last_read": max(r.values()) if r else None,
-                "last_wrote": max(w.values()) if w else None}
+                "last_wrote": max(w.values()) if w else None,
+                "read_by": {tool: len(s) for tool, s in self.read_by.get(key, {}).items()}}
 
     def created_in_session(self, key, git_created):
         if key not in self.first_write:
