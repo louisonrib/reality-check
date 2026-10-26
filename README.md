@@ -1,6 +1,6 @@
 For people who move with AI faster than they can double-check it — catch the wrong turn before you build on it, and climb out of the loop when you're already stuck.
 
-Claude Code skills that audit your premises, declare their sources, break retry loops, and keep your documents written for their reader.
+Claude Code skills that audit your premises, declare their sources, break retry loops, keep your documents written for their reader, and repair a project's agent docs.
 
 ## Installation
 
