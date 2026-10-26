@@ -38,7 +38,9 @@ FENCE = re.compile(r"^\s*(```|~~~)")
 # Numbered decision records (`0024-keep-backups.md`, `adr-24.md`) and their citations ("ADR-0024", "ADR 24").
 NUMBERED = re.compile(r"(?i)^(adr[-_ ]?)?0*(\d{1,5})(?=[-_ .])")
 DECISION_FOLDER = re.compile(r"(?i)(?:^|[-_ ])(?:adrs?|decisions?)(?:[-_ ]|$)")
-CITATION = re.compile(r"(?i)(?<![\w/-])ADR[-_ ]?(\d{1,5})(?!\d)")
+# A citation can list more numbers of the same width: "ADR-0021/0022", "ADR-0041 et 0048".
+CITATION = re.compile(r"(?i)(?<![\w/-])ADR[-_ ]?(\d{1,5})"
+                      r"((?:\s*(?:/|,|&|\bet\b|\band\b)\s*\d{1,5}(?!\d|\.\d))*)(?!\d|\.\d)")
 
 
 def git(repo, *args):
@@ -241,13 +243,13 @@ def imports_in(text):
 
 def decision_records(docs):
     """Number -> path of each numbered decision record: a numbered doc file in a folder named for
-    decisions (`adr`, `decisions`, `architecture-decisions`), or named `adr-<n>-…` itself.
+    decisions (`adr`, `decisions`, `architecture-decisions`) or below one, or named `adr-<n>-…`.
     A number two records share maps to None: citing it names no one file."""
     out = {}
     for path in docs:
         folder, name = posixpath.split(path)
         m = NUMBERED.match(name)
-        if m and (m.group(1) or DECISION_FOLDER.search(posixpath.basename(folder))):
+        if m and (m.group(1) or any(DECISION_FOLDER.search(d) for d in folder.split("/"))):
             n = int(m.group(2))
             out[n] = None if n in out else path
     return out
@@ -260,9 +262,11 @@ def citations(path, text, records, named):
     out = set()
     for n, line in prose_lines(text):
         for m in CITATION.finditer(line):
-            to = records.get(int(m.group(1)))
-            if to and to != path and (to, n) not in seen:
-                out.add((path, to, "citation", n))
+            numbers = [m.group(1)] + [d for d in re.findall(r"\d+", m.group(2)) if len(d) == len(m.group(1))]
+            for number in numbers:
+                to = records.get(int(number))
+                if to and to != path and (to, n) not in seen:
+                    out.add((path, to, "citation", n))
     return out
 
 
@@ -554,13 +558,15 @@ TS = re.compile(r'"timestamp":\s*"([^"]+)"')
 CWD = re.compile(r'"cwd":\s*"([^"]+)"')
 WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 MARKERS = ('"instructions"', '"nested_memory"', '"tool_use"', "<command-name>")
-# A doc path written in a tool's input: absolute, `~/`-prefixed or relative.
-NAMED_DOC = re.compile(r"(?<![\w./~-])((?:~/|/)?(?:[\w@+.-]+/)*[\w@+-][\w@+.-]*\.(?:md|mdx|mdc|rst|adoc))(?![\w/-])")
+# A doc path written in a tool's input: absolute, under `~/` or `$HOME/`, or relative; an `@` import's `@` is no part of it.
+NAMED_DOC = re.compile(r"(?<![\w./~$-])((?:~/|\$HOME/|/)?(?!@)(?:[\w@+.-]+/)*[\w@+-][\w@+.-]*\.(?:md|mdx|mdc|rst|adoc))"
+                       r"(?![\w/-])")
 CD = re.compile(r"(?<![\w-])cd\s+([\"']?)([^\s;&|()\"']+)\1")
 PATH_FIELDS = ("file_path", "notebook_path", "path")
 
 
 def strings(value):
+    """Every string in a JSON value, at any depth."""
     if isinstance(value, str):
         yield value
     elif isinstance(value, dict):
@@ -609,19 +615,23 @@ class Transcripts:
             return ("repo", m.group(1))
         return ("abs", path)
 
-    def named(self, inp, cwd):
+    def paths_named(self, inp, cwd):
         """Keys of the files a tool's input names: its path fields whole, and every doc path in
         its text. A relative path resolves against the folder of the last `cd` before it in the
-        same text (`cd <memory dir> && cat feedback.md`), else against the session's folder."""
+        shell command (`cd <memory dir> && cat feedback.md`), else against the session's folder."""
         def absolute(p, base):
             if p == "~" or p.startswith("~/"):
                 return self.home + p[1:]
+            if p.startswith("$HOME/"):
+                return self.home + p[5:]
             return os.path.join(base, p) if base else (p if p.startswith("/") else None)
 
         paths = {absolute(inp[k], cwd) for k in PATH_FIELDS if isinstance(inp.get(k), str) and inp[k]}
+        command = inp.get("command")
         for text in strings(inp):
             base = cwd
-            hits = sorted([(m.start(), True, m.group(2)) for m in CD.finditer(text)]
+            cds = CD.finditer(text) if text == command else ()  # a `cd` in a brief is prose
+            hits = sorted([(m.start(), True, m.group(2)) for m in cds]
                           + [(m.start(), False, m.group(1)) for m in NAMED_DOC.finditer(text)])
             for _, is_cd, p in hits:
                 if is_cd:
@@ -708,7 +718,7 @@ class Transcripts:
                     if name == "Write" and (key not in self.first_write or ts < self.first_write[key][0]):
                         self.first_write[key] = (ts, sid)
                     continue
-                for key in self.named(inp, e.get("cwd")):
+                for key in self.paths_named(inp, e.get("cwd")):
                     self._mark(self.read, key, sid, date)
                     self.read_by.setdefault(key, {}).setdefault(name, set()).add(sid)
 

@@ -41,7 +41,7 @@ For each reader, state whether it is still used, from the inventory:
 
 - a tool that names the file: how often it was invoked in this project, and when last (`tools[<id>].invocations`, `last_invoked`), and how many of those invocations a subagent made (`in_subagents`). Report the split: a tool invoked only by subagents was never invoked from a main session in the window;
 - a harness: its loading rule (`harness`, with `condition_met`) and the sessions that loaded the file (`loaded_in_sessions`), or, for a harness whose logs were not read, the user's answer from stage 1;
-- a pointer: how many doc files point to it (`pointed_to_by`), and whether sessions named the file in a tool's input (`sessions.read`, `last_read`), with which tools (`sessions.read_by`);
+- a pointer: how many doc files point to it (`pointed_to_by`), and whether sessions named the file in a tool's input (`sessions.read`, `last_read`), with which tools (`sessions.read_by`): a name in a command is not yet a read, so when `Bash` is the only tool, read the commands in the transcripts;
 - Cursor: the conversations that mention the file (`cursor_conversations`), when its logs were found.
 
 A file marked `orphan` has none of these. It is a candidate for deletion, still subject to the user's answers about unread logs and to the tools that name its folder (`folders[].named_by_tools`): when a tool's quoted line shows it reads or writes the files there (an ADR folder its skill writes to), that tool is a reader of the file; when it names the folder for its own purpose (a spec "under `docs/`"), it is not.
