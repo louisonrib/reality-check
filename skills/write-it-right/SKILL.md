@@ -27,6 +27,14 @@ Then the document's single job: teach, get a task done, describe what is,
 or record a decision. A sentence that serves another job belongs
 elsewhere — link to where it lives, or leave it out. Never embed it.
 
+When the reader is the end user of a product (a screen, a mail, a page, a
+notification), name also where they stand: what they just did, what is
+already in front of them, including what the platform, the browser or a
+third-party service shows them, and what they are trying to do next. The
+requester will judge the text; they are not its reader. A sentence
+written so the requester can see that a decision was honoured, a caveat
+covered or a claim kept true is addressed to the wrong person.
+
 ## Before writing: ship each visible element bare
 
 A visible element (a value, a chart, a field) ships **bare**: its label,
@@ -37,6 +45,17 @@ Any other sentence beside the element (a legend, how the value was
 computed, why it is shown, how to read it) is an option: propose it apart,
 in the conversation, with the reader's question it answers. The requester
 adds what they want, rather than cutting what they don't.
+
+## Before writing: an element earns its place
+
+Each element proposed for an end user answers a question they have at
+that point, or names a gain they cannot yet see, and nothing already in
+front of them answers it. An element with neither is left out, and "no
+text here" sits among the options you show. A brief that asks for one
+line per slot has not settled that every slot needs one: propose the
+empty slot, and tell the requester where you departed from the brief.
+"It was decided", "it is true" and "someone might ask" are origins, not
+reasons: what has only those stays in the plan and the tests.
 
 ## The unit of the tests: the reader's atom
 
